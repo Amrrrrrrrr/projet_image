@@ -2,6 +2,24 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
+import numpy as np
+
+def compute_output_size(x_s, y_s):
+    pts = np.stack([x_s, y_s], axis=1)  
+
+    w_top    = np.linalg.norm(pts[1] - pts[0])  
+    w_bottom = np.linalg.norm(pts[2] - pts[3])  
+    h_left   = np.linalg.norm(pts[3] - pts[0])  
+    h_right  = np.linalg.norm(pts[2] - pts[1])  
+
+    W_out = int(round((w_top + w_bottom) / 2.0))
+    H_out = int(round((h_left + h_right) / 2.0))
+
+    # sécurité
+    W_out = max(W_out, 1)
+    H_out = max(H_out, 1)
+    return W_out, H_out
+
 def homography_apply(H, x, y):
     """Applique une homographie SANS coordonnées homogènes."""
     denom = H[2,0] * x + H[2,1] * y + H[2,2]
@@ -82,7 +100,7 @@ def homography_extraction(I1, x_src, y_src, w, h):
     return I2
 
 # --- Charger votre image ---
-image_path = "lacoste.jpeg" 
+image_path = "graffiti1.jpg" 
 img = mpimg.imread(image_path)
 
 
@@ -103,8 +121,12 @@ if len(pts) == 4:
     y_s = np.array([p[1] for p in pts])
 
     # Taille de sortie souhaitée
-    W_out, H_out = 200, 300
+    W_out, H_out = compute_output_size(x_s, y_s)
     res = homography_extraction(img, x_s, y_s, W_out, H_out)
+
+    res_u8 = (np.clip(res, 0, 1) * 255).astype(np.uint8) if res.dtype != np.uint8 else res
+    plt.imsave("extraction.jpg", res_u8)
+    print("Sauvegardée : extraction.jpg")
 
     # Affichage du résultat
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
