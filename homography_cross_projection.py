@@ -81,21 +81,46 @@ def homography_extraction(I1, x_src, y_src, w, h):
 
 
 def homography_cross_projection(I, x1, y1, x2, y2):
-    # Convertir en tableaux numpy
-    x1 = np.array(x1)
-    y1 = np.array(y1)
-    x2 = np.array(x2)
-    y2 = np.array(y2)
+    x1 = np.array(x1, dtype=float); y1 = np.array(y1, dtype=float)
+    x2 = np.array(x2, dtype=float); y2 = np.array(y2, dtype=float)
+
+    # --- NORMALISATION DES 4 COINS : TL, TR, BR, BL + sens cohérent
+    P1 = np.stack([x1, y1], axis=1)  # (4,2)
+    s1 = P1[:,0] + P1[:,1]
+    d1 = P1[:,0] - P1[:,1]
+    TL1 = P1[np.argmin(s1)]
+    BR1 = P1[np.argmax(s1)]
+    TR1 = P1[np.argmax(d1)]
+    BL1 = P1[np.argmin(d1)]
+    P1 = np.array([TL1, TR1, BR1, BL1], dtype=float)
+
+    P2 = np.stack([x2, y2], axis=1)
+    s2 = P2[:,0] + P2[:,1]
+    d2 = P2[:,0] - P2[:,1]
+    TL2 = P2[np.argmin(s2)]
+    BR2 = P2[np.argmax(s2)]
+    TR2 = P2[np.argmax(d2)]
+    BL2 = P2[np.argmin(d2)]
+    P2 = np.array([TL2, TR2, BR2, BL2], dtype=float)
+
+    # Forcer le même sens (si un quad est inversé -> flip)
+    def signed_area(P):
+        return 0.5 * np.sum(P[:,0]*np.roll(P[:,1], -1) - P[:,1]*np.roll(P[:,0], -1))
+
+    if signed_area(P1) * signed_area(P2) < 0:
+        # inverse l'ordre (garde TL en premier)
+        P2 = P2[[0, 3, 2, 1]]
+
+    x1, y1 = P1[:,0], P1[:,1]
+    x2, y2 = P2[:,0], P2[:,1]
+    # --- FIN NORMALISATION
 
     # Carré canonique dans l'espace temporaire
-    xC = np.array([0, 1, 1, 0])
-    yC = np.array([0, 0, 1, 1])
+    xC = np.array([0, 1, 1, 0], dtype=float)
+    yC = np.array([0, 0, 1, 1], dtype=float)
 
-    # Homos : quad -> carré (coords dans l'espace temporaire)
     H_q1_to_C = homography_estimate(x1, y1, xC, yC)
     H_q2_to_C = homography_estimate(x2, y2, xC, yC)
-
-    # Homos : carré -> quad (pour reconstruire coord dans l'autre quad)
     H_C_to_q1 = homography_estimate(xC, yC, x1, y1)
     H_C_to_q2 = homography_estimate(xC, yC, x2, y2)
 
@@ -104,29 +129,24 @@ def homography_cross_projection(I, x1, y1, x2, y2):
 
     for y in range(H_src):
         for x in range(W_src):
-            # 1) Tester si (x,y) est dans quad1 via l'espace temporaire
-            u1, v1 = homography_apply(H_q1_to_C, x, y)  # coord dans le carré
+            u1, v1 = homography_apply(H_q1_to_C, x, y)
             if 0 <= u1 <= 1 and 0 <= v1 <= 1:
-                # On projette ces coord du carré vers quad2
                 x2f, y2f = homography_apply(H_C_to_q2, u1, v1)
-                xs = int(round(x2f))
-                ys = int(round(y2f))
+                xs = int(round(x2f)); ys = int(round(y2f))
                 if 0 <= xs < W_src and 0 <= ys < H_src:
                     I_out[y, x] = I[ys, xs]
                 continue
 
-            # 2) Tester si (x,y) est dans quad2 via l'espace temporaire
             u2, v2 = homography_apply(H_q2_to_C, x, y)
             if 0 <= u2 <= 1 and 0 <= v2 <= 1:
-                # On projette ces coord du carré vers quad1
                 x1f, y1f = homography_apply(H_C_to_q1, u2, v2)
-                xs = int(round(x1f))
-                ys = int(round(y1f))
+                xs = int(round(x1f)); ys = int(round(y1f))
                 if 0 <= xs < W_src and 0 <= ys < H_src:
                     I_out[y, x] = I[ys, xs]
                 continue
 
     return I_out
+
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -134,7 +154,7 @@ import matplotlib.image as mpimg
 
 if __name__ == "__main__":
     # 1) Charger l'image
-    image_path = "lacoste.jpeg"   # <-- change le nom de fichier ici
+    image_path = "singe.jpg.webp"   # <-- change le nom de fichier ici
     I = mpimg.imread(image_path)
 
     # Si l'image est en float [0,1], on la passe en uint8 [0,255] (optionnel)

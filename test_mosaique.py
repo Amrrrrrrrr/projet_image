@@ -49,17 +49,14 @@ def homography_estimate(x1, y1, x2, y2):
 
 
 def homography_extraction(I0, x_src, y_src, w, h):
-    # rectangle destination (imagette)
     x_dst = np.array([0, w-1, w-1, 0])
     y_dst = np.array([0, 0,   h-1, h-1])
 
-    # H_rect_to_0 : (u,v) imagette -> (x,y) origine
     H_rect_to_0 = homography_estimate(x_dst, y_dst, x_src, y_src)
 
-    Hinv = H_rect_to_0  # dest->src
+    Hinv = H_rect_to_0 
     Hs, Ws = I0.shape[0], I0.shape[1]
 
-    # sortie (par défaut float64)
     if I0.ndim == 2:
         I_out = np.zeros((h, w))
     else:
@@ -79,11 +76,10 @@ def homography_extraction(I0, x_src, y_src, w, h):
 def ItoMIB(I):
     I = np.asarray(I)
     h, w = I.shape[0], I.shape[1]
-    M = np.ones((h, w))     # masque 0/1
+    M = np.ones((h, w))    
     B = (0, 0, w, h)
     return [I, M, B]
 
-#donne ici la boite englobante de I1 après projection par H12 (voir main)
 def warp_bbox(w, h, H):
     corners_x = np.array([0, w-1, w-1, 0])
     corners_y = np.array([0, 0,   h-1, h-1])
@@ -117,7 +113,6 @@ def MIB_transform(MIBin, H, outB):
     xi = np.round(xs).astype(int)
     yi = np.round(ys).astype(int)
 
-    #un masque (tableau de True/False) qui dit, pour chaque pixel de l’image de sortie, si le point correspondant dans l’image source est à l’intérieur de l’image source.
     inside = (xi >= 0) & (xi < ws) & (yi >= 0) & (yi < hs)
 
     if I.ndim == 2:
@@ -127,7 +122,6 @@ def MIB_transform(MIBin, H, outB):
 
     Mout = np.zeros((Hout, Wout))  
 
-    # masque source (0/1) -> condition (Msrc > 0)
     Msrc = M[yi.clip(0, hs-1), xi.clip(0, ws-1)]
     src_valid = inside & (Msrc > 0)
 
@@ -140,11 +134,8 @@ def MIB_transform(MIBin, H, outB):
     return [Iout, Mout, (xmin, ymin, xmax, ymax)]
 
 
-def mib_fusion(MIB1, MIB2, mode="mean"):
-    """
-    mode = "mean" : fusion moyenne selon la formule du poly
-    mode = "I1"   : priorité à I1 sur recouvrement (I1 écrase I2 là où M1>0)
-    """
+def mib_fusion(MIB1, MIB2, mode="I1"):
+    
     I1, M1, B1 = MIB1
     I2, M2, B2 = MIB2
 
@@ -164,7 +155,6 @@ def mib_fusion(MIB1, MIB2, mode="mean"):
 
     is_gray = (I1.ndim == 2)
 
-    # Offsets/slices pour placer I1 et I2 dans le canvas
     off1x, off1y = int(x1min - xmin), int(y1min - ymin)
     h1, w1 = I1.shape[0], I1.shape[1]
     rr1, cc1 = slice(off1y, off1y + h1), slice(off1x, off1x + w1)
@@ -176,24 +166,19 @@ def mib_fusion(MIB1, MIB2, mode="mean"):
     m1 = (M1 > 0)
     m2 = (M2 > 0)
 
-    # ------------------------------------------------------------------
-    # MODE 1 : moyenne masquée (formule du poly)
-    # ------------------------------------------------------------------
+  
     if mode == "mean":
         if is_gray:
-            num = np.zeros((Hout, Wout))  # f1*m1 + f2*m2
+            num = np.zeros((Hout, Wout))  
         else:
             num = np.zeros((Hout, Wout, I1.shape[2]))
-        den = np.zeros((Hout, Wout))      # m1+m2
-
-        # Ajouter f1*m1 et m1
+        den = np.zeros((Hout, Wout))    
         if is_gray:
             num[rr1, cc1] += I1 * (m1 * 1.0)
         else:
             num[rr1, cc1, :] += I1 * (m1[:, :, None] * 1.0)
         den[rr1, cc1] += (m1 * 1.0)
 
-        # Ajouter f2*m2 et m2
         if is_gray:
             num[rr2, cc2] += I2 * (m2 * 1.0)
         else:
@@ -212,13 +197,7 @@ def mib_fusion(MIB1, MIB2, mode="mean"):
         Mout = valid * 1.0
         return [Iout, Mout, (xmin, ymin, xmax, ymax)]
 
-    # ------------------------------------------------------------------
-    # MODE 2 : priorité à I1 sur recouvrement
-    # Règle :
-    # - si M1=1 -> prendre I1
-    # - sinon si M2=1 -> prendre I2
-    # - sinon -> non défini (0, masque 0)
-    # ------------------------------------------------------------------
+
     elif mode == "I1":
         if is_gray:
             Iout = np.zeros((Hout, Wout))
@@ -226,14 +205,12 @@ def mib_fusion(MIB1, MIB2, mode="mean"):
             Iout = np.zeros((Hout, Wout, I1.shape[2]))
         Mout = np.zeros((Hout, Wout))
 
-        # 1) placer I2 d'abord (base)
         if is_gray:
             Iout[rr2, cc2][m2] = I2[m2]
         else:
             Iout[rr2, cc2][m2, :] = I2[m2, :]
         Mout[rr2, cc2][m2] = 1.0
 
-        # 2) placer I1 ensuite (écrase I2 dans recouvrement)
         if is_gray:
             Iout[rr1, cc1][m1] = I1[m1]
         else:
@@ -261,32 +238,30 @@ def choisir_quad(img, title):
 
 
 if __name__ == "__main__":
-    img = mpimg.imread("challenge1.png")
+    img = mpimg.imread("star1.jpg")
+    img = mpimg.imread("star1.jpg").astype(np.float32)
+    if img.max() > 1.0:
+        img /= 255.0
 
-    # 1) Extraction I1 (4 clics)
+
     x1_src, y1_src = choisir_quad(img, "EXTRACTION 1")
     W1, H1 = compute_output_size(x1_src, y1_src)
     I1, H1_rect_to_0 = homography_extraction(img, x1_src, y1_src, W1, H1)
 
-    # 2) Extraction I2 (4 clics)
     x2_src, y2_src = choisir_quad(img, "EXTRACTION 2 (recouvre extraction 1)")
     W2, H2 = compute_output_size(x2_src, y2_src)
     I2, H2_rect_to_0 = homography_extraction(img, x2_src, y2_src, W2, H2)
 
-    # 3) Homographie I1 -> I2 automatiquement
     H12 = np.linalg.inv(H2_rect_to_0) @ H1_rect_to_0
 
-    # 4) MIB
     MIB1 = ItoMIB(I1)
     MIB2 = ItoMIB(I2)
     B2 = MIB2[2]
 
-    # ====== Mosaïque SANS élargissement (crop dans B2) ======
     MIB12_crop = MIB_transform(MIB1, H12, outB=B2)
     MIB_crop = mib_fusion(MIB2, MIB12_crop)
     I_crop = MIB_crop[0]
 
-    # ====== Mosaïque AVEC élargissement (BG englobante) ======
     h1, w1 = I1.shape[0], I1.shape[1]
     Bw = warp_bbox(w1, h1, H12)
 
@@ -300,7 +275,6 @@ if __name__ == "__main__":
     MIB_big = mib_fusion(MIB2_big, MIB1_big)
     I_big = MIB_big[0]
 
-    # 5) Affichage côte à côte
     plt.figure(figsize=(14, 6))
 
     plt.subplot(1, 2, 1)
@@ -315,7 +289,6 @@ if __name__ == "__main__":
 
     plt.show()
 
-    # 6) Sauvegarde (si tes images sont en uint8, c'est ok aussi)
     plt.imsave("mosaic_crop.png", I_crop)
     plt.imsave("mosaic_big.png", I_big)
-    print("✅ Sauvegardé : mosaic_crop.png et mosaic_big.png")
+    print(" Sauvegardé : mosaic_crop.png et mosaic_big.png")

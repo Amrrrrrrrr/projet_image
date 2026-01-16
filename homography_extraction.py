@@ -74,33 +74,54 @@ H = homography_estimate(x1, y1, x2, y2)
 print("H =\n", H)
 
 def homography_extraction(I1, x_src, y_src, w, h):
+    x_src = np.array(x_src, dtype=float)
+    y_src = np.array(y_src, dtype=float)
 
-    x_dst = np.array([0, w-1, w-1, 0])
-    y_dst = np.array([0,0,h-1, h-1])
+    # --- NORMALISATION : forcer l'ordre HG, HD, BD, BG + sens cohérent
+    P = np.stack([x_src, y_src], axis=1)  # (4,2)
+    s = P[:,0] + P[:,1]
+    d = P[:,0] - P[:,1]
+
+    TL = P[np.argmin(s)]
+    BR = P[np.argmax(s)]
+    TR = P[np.argmax(d)]
+    BL = P[np.argmin(d)]
+
+    P = np.array([TL, TR, BR, BL], dtype=float)
+
+    # forcer même sens (anti-horaire) pour éviter flip/rotation
+    area2 = np.sum(P[:,0]*np.roll(P[:,1], -1) - P[:,1]*np.roll(P[:,0], -1))
+    if area2 < 0:
+        P = P[[0, 3, 2, 1]]  # garde TL en premier, inverse le sens
+
+    x_src, y_src = P[:,0], P[:,1]
+    # --- FIN NORMALISATION
+
+    x_dst = np.array([0, w-1, w-1, 0], dtype=float)
+    y_dst = np.array([0, 0,   h-1, h-1], dtype=float)
 
     H_inv = homography_estimate(x_dst, y_dst, x_src, y_src)
 
     height_src, width_src = I1.shape[0], I1.shape[1]
 
     shape_out = list(I1.shape)
-    shape_out[0] = h  
-    shape_out[1] = w   
+    shape_out[0] = h
+    shape_out[1] = w
     I2 = np.zeros(shape_out, dtype=I1.dtype)
 
-    for v in range(h):    
-        for u in range(w): 
+    for v in range(h):
+        for u in range(w):
             sx, sy = homography_apply(H_inv, u, v)
-            # Plus proche voisin
             sx_i = int(round(sx))
             sy_i = int(round(sy))
-            # Vérification que le point est dans l'image source
             if 0 <= sx_i < width_src and 0 <= sy_i < height_src:
                 I2[v, u] = I1[sy_i, sx_i]
 
     return I2
 
+
 # --- Charger votre image ---
-image_path = "graffiti1.jpg" 
+image_path = "singe.jpg.webp" 
 img = mpimg.imread(image_path)
 
 

@@ -49,17 +49,14 @@ def homography_estimate(x1, y1, x2, y2):
 
 
 def homography_extraction(I0, x_src, y_src, w, h):
-    # rectangle destination (imagette)
     x_dst = np.array([0, w-1, w-1, 0])
     y_dst = np.array([0, 0,   h-1, h-1])
 
-    # H_rect_to_0 : (u,v) imagette -> (x,y) origine
     H_rect_to_0 = homography_estimate(x_dst, y_dst, x_src, y_src)
 
-    Hinv = H_rect_to_0  # dest->src
+    Hinv = H_rect_to_0  
     Hs, Ws = I0.shape[0], I0.shape[1]
 
-    # sortie (par défaut float64)
     if I0.ndim == 2:
         I_out = np.zeros((h, w))
     else:
@@ -79,11 +76,10 @@ def homography_extraction(I0, x_src, y_src, w, h):
 def ItoMIB(I):
     I = np.asarray(I)
     h, w = I.shape[0], I.shape[1]
-    M = np.ones((h, w))     # masque 0/1
+    M = np.ones((h, w))    
     B = (0, 0, w, h)
     return [I, M, B]
 
-#donne ici la boite englobante de I1 après projection par H12 (voir main)
 def warp_bbox(w, h, H):
     corners_x = np.array([0, w-1, w-1, 0])
     corners_y = np.array([0, 0,   h-1, h-1])
@@ -117,7 +113,6 @@ def MIB_transform(MIBin, H, outB):
     xi = np.round(xs).astype(int)
     yi = np.round(ys).astype(int)
 
-    #un masque (tableau de True/False) qui dit, pour chaque pixel de l’image de sortie, si le point correspondant dans l’image source est à l’intérieur de l’image source.
     inside = (xi >= 0) & (xi < ws) & (yi >= 0) & (yi < hs)
 
     if I.ndim == 2:
@@ -127,7 +122,6 @@ def MIB_transform(MIBin, H, outB):
 
     Mout = np.zeros((Hout, Wout))  
 
-    # masque source (0/1) -> condition (Msrc > 0)
     Msrc = M[yi.clip(0, hs-1), xi.clip(0, ws-1)]
     src_valid = inside & (Msrc > 0)
 
@@ -141,10 +135,7 @@ def MIB_transform(MIBin, H, outB):
 
 
 def mib_fusion(MIB1, MIB2, mode="mean"):
-    """
-    mode = "mean" : fusion moyenne selon la formule du poly
-    mode = "I1"   : priorité à I1 sur recouvrement (I1 écrase I2 là où M1>0)
-    """
+    
     I1, M1, B1 = MIB1
     I2, M2, B2 = MIB2
 
@@ -164,7 +155,6 @@ def mib_fusion(MIB1, MIB2, mode="mean"):
 
     is_gray = (I1.ndim == 2)
 
-    # Offsets/slices pour placer I1 et I2 dans le canvas
     off1x, off1y = int(x1min - xmin), int(y1min - ymin)
     h1, w1 = I1.shape[0], I1.shape[1]
     rr1, cc1 = slice(off1y, off1y + h1), slice(off1x, off1x + w1)
@@ -176,24 +166,19 @@ def mib_fusion(MIB1, MIB2, mode="mean"):
     m1 = (M1 > 0)
     m2 = (M2 > 0)
 
-    # ------------------------------------------------------------------
-    # MODE 1 : moyenne masquée (formule du poly)
-    # ------------------------------------------------------------------
     if mode == "mean":
         if is_gray:
-            num = np.zeros((Hout, Wout))  # f1*m1 + f2*m2
+            num = np.zeros((Hout, Wout))  
         else:
             num = np.zeros((Hout, Wout, I1.shape[2]))
-        den = np.zeros((Hout, Wout))      # m1+m2
+        den = np.zeros((Hout, Wout))    
 
-        # Ajouter f1*m1 et m1
         if is_gray:
             num[rr1, cc1] += I1 * (m1 * 1.0)
         else:
             num[rr1, cc1, :] += I1 * (m1[:, :, None] * 1.0)
         den[rr1, cc1] += (m1 * 1.0)
 
-        # Ajouter f2*m2 et m2
         if is_gray:
             num[rr2, cc2] += I2 * (m2 * 1.0)
         else:
@@ -212,13 +197,7 @@ def mib_fusion(MIB1, MIB2, mode="mean"):
         Mout = valid * 1.0
         return [Iout, Mout, (xmin, ymin, xmax, ymax)]
 
-    # ------------------------------------------------------------------
-    # MODE 2 : priorité à I1 sur recouvrement
-    # Règle :
-    # - si M1=1 -> prendre I1
-    # - sinon si M2=1 -> prendre I2
-    # - sinon -> non défini (0, masque 0)
-    # ------------------------------------------------------------------
+  
     elif mode == "I1":
         if is_gray:
             Iout = np.zeros((Hout, Wout))
@@ -226,14 +205,12 @@ def mib_fusion(MIB1, MIB2, mode="mean"):
             Iout = np.zeros((Hout, Wout, I1.shape[2]))
         Mout = np.zeros((Hout, Wout))
 
-        # 1) placer I2 d'abord (base)
         if is_gray:
             Iout[rr2, cc2][m2] = I2[m2]
         else:
             Iout[rr2, cc2][m2, :] = I2[m2, :]
         Mout[rr2, cc2][m2] = 1.0
 
-        # 2) placer I1 ensuite (écrase I2 dans recouvrement)
         if is_gray:
             Iout[rr1, cc1][m1] = I1[m1]
         else:
@@ -252,7 +229,6 @@ def bruiter_image(I, sigma):
     I = np.asarray(I)
     bruit = sigma * np.random.randn(*I.shape)
     J = I + bruit
-    # clamp simple si image float type [0,1]
     J = np.clip(J, 0, 1)
     return J
 
@@ -271,10 +247,7 @@ def extraire_imagettes_depuis_image_origine(img, N):
 
 
 def homographies_vers_reference(Hrect_to_0_list, ref=0):
-    """
-    Calcule automatiquement H_{i->ref} pour toutes les imagettes.
-    H_{i->ref} = inv(Href_rect_to_0) @ Hi_rect_to_0
-    """
+    
     Href = Hrect_to_0_list[ref]
     Href_inv = np.linalg.inv(Href)
     H_to_ref = []
@@ -296,14 +269,11 @@ def choisir_quad(img, title):
 
 
 def bbox_globale(images, H_to_ref):
-    """
-    Calcule BG = union de toutes les bbox des images warpées dans le repère ref.
-    """
-    # bbox de la ref (H=I) est incluse naturellement via warp_bbox aussi (si H=I)
+   
     BG = None
     for I, H in zip(images, H_to_ref):
         h, w = I.shape[0], I.shape[1]
-        B = warp_bbox(w, h, H)  # bbox de I warpée dans repère ref
+        B = warp_bbox(w, h, H) 
         if BG is None:
             BG = B
         else:
@@ -314,11 +284,9 @@ def bbox_globale(images, H_to_ref):
 
 def MIB_fusion_N_parallele(MIB_list):
     
-    # Tous les MIB doivent déjà être dans le même outB (même taille, même B)
     I0, M0, B0 = MIB_list[0]
     Hout, Wout = I0.shape[0], I0.shape[1]
 
-    # numérateur et dénominateur
     num = np.zeros(I0.shape)
     den = np.zeros((Hout, Wout))
 
@@ -350,59 +318,47 @@ def MIB_fusion_N_sequentielle(MIB_list, mode="mean"):
     return acc
 
 if __name__ == "__main__":
-    # ==========================
-    # 0) Charger 4 images distinctes
-    # ==========================
-    paths = ["challenge1.png", "lacoste.jpeg", "star.jpg", "singe.jpg.webp"]
+   
+    paths = ["cadre.jpg.avif", "cadre.jpg.avif", "cadre.jpg.avif", "cadre.jpg.avif"]
 
     images = []
     for p in paths:
         I = mpimg.imread(p)
 
-        # --- normalisation robuste en float [0,1] ---
         if I.dtype != np.float32 and I.dtype != np.float64:
             I = I.astype(np.float32)
 
-        # si image en 0..255 (uint8) -> 0..1
         if I.max() > 1.0:
             I = I / 255.0
 
         images.append(I)
 
 
-    # -------- paramètres --------
-    sigma = 0.02      # bruit (0 = pas de bruit)
-    ref = 0           # index de l'image de référence (0 => img1)
+    sigma = 0     
+    ref = 0           
 
-    # ==========================
-    # 1) Option : bruiter les images
-    # ==========================
+   
     if sigma > 0:
         images = [bruiter_image(I, sigma) for I in images]
 
-    # ==========================
-    # 2) Homographies vers la référence (clics de correspondances)
-    # ==========================
-    # On clique 4 points dans l'image de référence
     x_ref, y_ref = choisir_quad(images[ref], "REF (img1) : clique 4 points")
 
-    # H_to_ref[i] = homographie (image i) -> (image ref)
     H_to_ref = []
 
     for i in range(len(images)):
         if i == ref:
             H_to_ref.append(np.eye(3))
         else:
-            # Cliquer les 4 points correspondants dans l'image i
             x_i, y_i = choisir_quad(images[i], f"IMG {i+1} : clique les 4 points correspondants")
-            # Attention: homography_estimate(x1,y1,x2,y2) => (1)->(2)
-            # Donc ici: (image i) -> (ref)
+            
             H_i_ref = homography_estimate(x_i, y_i, x_ref, y_ref)
             H_to_ref.append(H_i_ref)
+            x_pred, y_pred = homography_apply(H_i_ref, x_i, y_i)
+            err = np.sqrt((x_pred - x_ref)**2 + (y_pred - y_ref)**2)
+            print("err mean =", err.mean(), "err max =", err.max())
 
-    # ==========================
-    # 3) Bbox globale BG (élargissement)
-    # ==========================
+
+   
     BG = None
     for I, H in zip(images, H_to_ref):
         h, w = I.shape[0], I.shape[1]
@@ -415,32 +371,25 @@ if __name__ == "__main__":
 
     print("BG =", BG)
 
-    # ==========================
-    # 4) ItoMIB -> MIB_transform (toutes dans BG)
-    # ==========================
+   
     MIB_big_list = []
     for I, H in zip(images, H_to_ref):
         MIB = ItoMIB(I)
         MIB_big = MIB_transform(MIB, H, outB=BG)
         MIB_big_list.append(MIB_big)
-
-    # ==========================
-    # 5A) Fusion parallèle (ordre indépendant)
-    # ==========================
+        
+        
+   
     MIB_par = MIB_fusion_N_parallele(MIB_big_list)
     I_par = MIB_par[0]
 
-    # ==========================
-    # 5B) Fusion séquentielle (ordre peut changer)
-    # ==========================
+   
     MIB_seq_1 = MIB_fusion_N_sequentielle(MIB_big_list, mode="mean")
     MIB_seq_2 = MIB_fusion_N_sequentielle(list(reversed(MIB_big_list)), mode="mean")
     I_seq_1 = MIB_seq_1[0]
     I_seq_2 = MIB_seq_2[0]
 
-    # ==========================
-    # 6) Affichage comparatif
-    # ==========================
+    
     plt.figure(figsize=(18, 6))
 
     plt.subplot(1, 3, 1)
@@ -460,9 +409,7 @@ if __name__ == "__main__":
 
     plt.show()
 
-    # ==========================
-    # 7) Sauvegarde
-    # ==========================
+  
     plt.imsave("mosaic_parallele.png", I_par)
     plt.imsave("mosaic_seq_normal.png", I_seq_1)
     plt.imsave("mosaic_seq_inverse.png", I_seq_2)
